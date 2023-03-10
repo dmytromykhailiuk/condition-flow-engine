@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "module": "CommonJS",
+    "target": "ES2018",
+    "typeRoots": ["node_modules/@types"],
+    "sourceMap": true,
+    "outDir": "./dist",
+    "jsx": "react",
+    "declaration": true,
+    "inlineSources": true,
+    "rootDir": "."
+  },
+  "include": ["src/index.ts"],
+  "exclude": ["node_modules"]
+}
