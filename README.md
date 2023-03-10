@@ -2,8 +2,6 @@
 
 **Solution for big projects with dynamic application behaviour based on configurations**
 
-(Solution is built on top of RXJS library with NgRx architecture)
-
 ## Installation
 
 ```sh
@@ -16,6 +14,13 @@ npm i @dmytromykhailiuk/condition-flow-engine
 - You need flow runner solution
 - You need condition validation solution based on JSON config
 - You want to have dynamic application behaviour based on JSON config
+
+**Interesting packages**
+
+- [Dependency Injection Container](https://www.npmjs.com/package/@dmytromykhailiuk/dependency-injection-container)
+- [React Dependency Injection Module](https://www.npmjs.com/package/@dmytromykhailiuk/react-di-module)
+- [RxJS React Redux Effects](https://www.npmjs.com/package/@dmytromykhailiuk/rx-react-redux-effect)
+- [Condition Flow Engine](https://www.npmjs.com/package/@dmytromykhailiuk/condition-flow-engine)
 
 **If you answered yes to one of the options, then this library is right choice.**
 

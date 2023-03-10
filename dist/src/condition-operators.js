@@ -9,6 +9,6 @@ const continueIfConditionIsValid = (condition, context$, conditionsMap = {}) => 
     conditionsMap,
 })), (0, rxjs_1.map)(() => value))));
 exports.continueIfConditionIsValid = continueIfConditionIsValid;
-const subscribeOnAllDataAndContinueWhenConditionWillBeValid = (condition, context$, conditionsMap = {}) => (source$) => source$.pipe((0, rxjs_1.switchMap)(() => context$.pipe((0, rxjs_1.distinctUntilChanged)((0, condition_functions_1.isSameStateForCondition)(condition, conditionsMap)), (0, exports.continueIfConditionIsValid)(condition, context$, conditionsMap), (0, rxjs_1.take)(1))));
+const subscribeOnAllDataAndContinueWhenConditionWillBeValid = (condition, context$, conditionsMap = {}) => (source$) => source$.pipe((0, rxjs_1.switchMap)((value) => context$.pipe((0, rxjs_1.distinctUntilChanged)((0, condition_functions_1.isSameStateForCondition)(condition, conditionsMap)), (0, exports.continueIfConditionIsValid)(condition, context$, conditionsMap), (0, rxjs_1.take)(1), (0, rxjs_1.map)(() => value))));
 exports.subscribeOnAllDataAndContinueWhenConditionWillBeValid = subscribeOnAllDataAndContinueWhenConditionWillBeValid;
 //# sourceMappingURL=condition-operators.js.map

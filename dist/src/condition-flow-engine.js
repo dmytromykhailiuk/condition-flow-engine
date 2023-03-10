@@ -6,34 +6,48 @@ const condition_functions_1 = require("./condition-functions");
 const condition_operators_1 = require("./condition-operators");
 const background_side_effects_1 = require("./background-side-effects");
 const validate_conditions_and_run_flow_1 = require("./validate-conditions-and-run-flow");
-const createConditionFlowEngine = ({ flowRunner, conditionsMap = {}, flowValidatorMap = {}, flowsMap = {}, hooks = {}, backgroundFlows = {}, }) => {
+const createConditionFlowEngine = ({ flowRunner, config: configFromPayload = {}, }) => {
+    let config = configFromPayload;
     const runFlow = (flow, context) => {
-        const actionsForFlow = typeof flow === 'string' ? flowsMap[flow] : flow;
+        const actionsForFlow = typeof flow === 'string' ? config === null || config === void 0 ? void 0 : config.flowsMap[flow] : flow;
         return flowRunner(actionsForFlow, context);
+    };
+    const updateConfig = (fn) => {
+        config = fn(config);
     };
     const backgroundFlowSubscriptions = {};
     return {
         runFlow,
-        validateCondition: (obj) => (0, condition_functions_1.validateCondition)({ ...obj, conditionsMap }),
-        isSameStateForCondition: (condition) => (0, condition_functions_1.isSameStateForCondition)(condition, conditionsMap),
-        continueIfConditionIsValid: (condition, context$) => (0, condition_operators_1.continueIfConditionIsValid)(condition, context$, conditionsMap),
-        subscribeOnAllDataAndContinueWhenConditionWillBeValid: (condition, context$) => (0, condition_operators_1.subscribeOnAllDataAndContinueWhenConditionWillBeValid)(condition, context$, conditionsMap),
+        updateConfig,
+        validateCondition: (obj) => (0, condition_functions_1.validateCondition)({ ...obj, globalContext: obj.context, conditionsMap: config === null || config === void 0 ? void 0 : config.conditionsMap }),
+        continueIfConditionIsValid: (condition, context$) => (0, condition_operators_1.continueIfConditionIsValid)(condition, context$, config === null || config === void 0 ? void 0 : config.conditionsMap),
+        subscribeOnAllDataAndContinueWhenConditionWillBeValid: (condition, context$) => (0, condition_operators_1.subscribeOnAllDataAndContinueWhenConditionWillBeValid)(condition, context$, config === null || config === void 0 ? void 0 : config.conditionsMap),
         validateConditionsAndRunFlow: (obj) => {
             let validator = obj.validator;
             if (typeof validator === 'string') {
-                validator = flowValidatorMap[validator];
+                validator = config === null || config === void 0 ? void 0 : config.flowValidatorMap[validator];
             }
-            return (0, validate_conditions_and_run_flow_1.validateConditionsAndRunFlow)({ ...obj, validator, flowRunner: runFlow, conditionsMap });
+            return (0, validate_conditions_and_run_flow_1.validateConditionsAndRunFlow)({
+                ...obj,
+                validator,
+                flowRunner: runFlow,
+                conditionsMap: config === null || config === void 0 ? void 0 : config.conditionsMap,
+            });
         },
         runHook(hookName, context) {
-            if (!hooks[hookName]) {
+            var _a;
+            if (!(config === null || config === void 0 ? void 0 : config.hooks[hookName])) {
                 return (0, rxjs_1.of)(context);
             }
-            for (const conditionObject of hooks[hookName]) {
+            for (const conditionObject of ((_a = config === null || config === void 0 ? void 0 : config.hooks) === null || _a === void 0 ? void 0 : _a[hookName]) || []) {
                 if (typeof conditionObject === 'string') {
                     return runFlow(conditionObject, context);
                 }
-                if ((0, condition_functions_1.validateCondition)({ condition: conditionObject.condition, globalContext: context, conditionsMap })) {
+                if ((0, condition_functions_1.validateCondition)({
+                    condition: conditionObject.condition,
+                    globalContext: context,
+                    conditionsMap: config === null || config === void 0 ? void 0 : config.conditionsMap,
+                })) {
                     return runFlow(conditionObject.flow, context);
                 }
             }
@@ -43,7 +57,7 @@ const createConditionFlowEngine = ({ flowRunner, conditionsMap = {}, flowValidat
             if (backgroundFlowSubscriptions[groupId]) {
                 backgroundFlowSubscriptions[groupId].unsubscribe();
             }
-            backgroundFlowSubscriptions[groupId] = (0, background_side_effects_1.runBackgroundSideEffects)(context$, backgroundFlowsArr || backgroundFlows[groupId] || [], runFlow, conditionsMap);
+            backgroundFlowSubscriptions[groupId] = (0, background_side_effects_1.runBackgroundSideEffects)(context$, backgroundFlowsArr || (config === null || config === void 0 ? void 0 : config.backgroundFlows[groupId]) || [], runFlow, config === null || config === void 0 ? void 0 : config.conditionsMap);
         },
         stopBackgrounFlows(groupId) {
             if (backgroundFlowSubscriptions[groupId]) {
