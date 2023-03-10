@@ -40,7 +40,7 @@ export const subscribeOnAllDataAndContinueWhenConditionWillBeValid =
           distinctUntilChanged(isSameStateForCondition<F>(condition, conditionsMap)),
           continueIfConditionIsValid<F>(condition, context$, conditionsMap),
           take(1),
-          map(() => value as T)
+          map(() => value as T),
         ),
       ),
     );
