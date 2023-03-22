@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.validateCondition = exports.isSameStateForCondition = void 0;
+exports.validateCondition = exports.isSameStateForCondition = exports.mapContext = void 0;
 const interfaces_1 = require("./interfaces");
 const getVariablesInCondition = (conditionObject, variableContext = []) => {
     let localVariableContext = variableContext;
@@ -29,7 +29,8 @@ const getVariablesInCondition = (conditionObject, variableContext = []) => {
         }
     }
 };
-const mapContext = (context, mapping) => !mapping.length ? context : mapContext(context === null || context === void 0 ? void 0 : context[mapping[0]], mapping.slice(1));
+const mapContext = (context, mapping) => !mapping.length ? context : (0, exports.mapContext)(context === null || context === void 0 ? void 0 : context[mapping[0]], mapping.slice(1));
+exports.mapContext = mapContext;
 const makeBaseOperation = (operation, valueFromCondition, valueFromContext) => {
     switch (operation) {
         case interfaces_1.Operation.EQ: {
@@ -67,8 +68,8 @@ const isSameStateForCondition = (condition, conditionsMap = {}) => (prevContext,
     const conditionObject = typeof condition === 'string' ? conditionsMap[condition] : condition;
     const variablesInConditions = getVariablesInCondition(conditionObject);
     return variablesInConditions.every(({ mapping, operation, value }) => {
-        const prevValue = mapContext(prevContext, mapping);
-        const currValue = mapContext(currContext, mapping);
+        const prevValue = (0, exports.mapContext)(prevContext, mapping);
+        const currValue = (0, exports.mapContext)(currContext, mapping);
         return makeBaseOperation(operation, value, prevValue) === makeBaseOperation(operation, value, currValue);
     });
 };
@@ -77,10 +78,10 @@ const validateCondition = ({ condition, globalContext, localContext = globalCont
     let newContext = localContext;
     const conditionObject = typeof condition === 'string' ? conditionsMap[condition] : condition;
     if (conditionObject.mapFromGlobalContext) {
-        newContext = mapContext(localContext, conditionObject.mapFromGlobalContext);
+        newContext = (0, exports.mapContext)(localContext, conditionObject.mapFromGlobalContext);
     }
     if (conditionObject.mapFromLocalContext) {
-        newContext = mapContext(localContext, conditionObject.mapFromLocalContext);
+        newContext = (0, exports.mapContext)(localContext, conditionObject.mapFromLocalContext);
     }
     switch (conditionObject.operation) {
         case interfaces_1.Operation.OR: {

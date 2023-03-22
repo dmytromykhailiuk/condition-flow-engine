@@ -11,8 +11,58 @@ export interface BackgroundFlow {
   flow: Flow;
 }
 
+interface EngineBackgroundControlForRunHook {
+  methodName: 'runHook';
+  hookName: string;
+}
+
+interface EngineBackgroundControlForRunBackgroundFlows {
+  methodName: 'runBackgroundFlows';
+  groupId: string;
+}
+
+interface EngineBackgroundControlForStopBackgrounFlows {
+  methodName: 'stopBackgrounFlows';
+  groupId: string;
+}
+
+interface EngineBackgroundControlForStopAllBackgrounFlows {
+  methodName: 'stopAllBackgrounFlows';
+}
+
+interface EngineBackgroundControlForRunFlow {
+  methodName: 'runFlow';
+  flowName: string;
+}
+
+export interface EngineBackgroundControlBase {
+  runEngineMethods: (
+    | EngineBackgroundControlForRunHook
+    | EngineBackgroundControlForRunBackgroundFlows
+    | EngineBackgroundControlForStopBackgrounFlows
+    | EngineBackgroundControlForStopAllBackgrounFlows
+    | EngineBackgroundControlForRunFlow
+  )[];
+}
+
+interface EngineBackgroundControlWithOnce extends EngineBackgroundControlBase {
+  once: boolean;
+}
+
+export interface EngineBackgroundControlWithTransition extends EngineBackgroundControlBase {
+  from: ConditionObject | string;
+  to: ConditionObject | string;
+  once?: boolean;
+}
+
+export type EngineBackgroundControl = EngineBackgroundControlWithOnce | EngineBackgroundControlWithTransition;
+
 export interface BackgroundFlowsMap {
   [groupId: string]: BackgroundFlow[];
+}
+
+export interface EngineBackgroundControlsMap {
+  [groupId: string]: EngineBackgroundControl[];
 }
 
 export type LinkToCondition = string;

@@ -1,42 +1,44 @@
 import { FlowRunner } from './flow-runner';
-import { Flow, LinkToCondition, BackgroundFlow, BackgroundFlowsMap, Hooks, FlowsMap, ConditionsMap, ConditionObject, FlowValidator, FlowValidatorMap } from './interfaces';
-import { ObservableInput } from 'rxjs';
-export declare const createConditionFlowEngine: <T>({ flowRunner, config: configFromPayload, }: {
+import { Flow, LinkToCondition, BackgroundFlow, BackgroundFlowsMap, Hooks, FlowsMap, ConditionsMap, ConditionObject, FlowValidator, FlowValidatorMap, EngineBackgroundControl, EngineBackgroundControlsMap } from './interfaces';
+import { Observable, ObservableInput } from 'rxjs';
+export declare const createConditionFlowEngine: <T>({ flowRunner, context$, config: configFromPayload, }: {
     flowRunner: FlowRunner;
+    context$: ObservableInput<T>;
     config?: {
         conditionsMap?: ConditionsMap;
         flowValidatorMap?: FlowValidatorMap;
         flowsMap?: FlowsMap;
         hooks?: Hooks;
         backgroundFlows?: BackgroundFlowsMap;
+        engineBackgroundControls?: EngineBackgroundControlsMap;
     };
 }) => {
-    runFlow: (flow: Flow, context: T) => import("rxjs").Observable<T>;
+    runFlow: (flow: Flow) => Observable<T>;
+    runHook: (hookName: string) => Observable<T>;
     updateConfig: (fn: (_: {
         conditionsMap?: ConditionsMap;
         flowValidatorMap?: FlowValidatorMap;
         flowsMap?: FlowsMap;
         hooks?: Hooks;
         backgroundFlows?: BackgroundFlowsMap;
+        engineBackgroundControls?: EngineBackgroundControlsMap;
     }) => {
         conditionsMap?: ConditionsMap;
         flowValidatorMap?: FlowValidatorMap;
         flowsMap?: FlowsMap;
         hooks?: Hooks;
         backgroundFlows?: BackgroundFlowsMap;
+        engineBackgroundControls?: EngineBackgroundControlsMap;
     }) => void;
-    validateCondition: (obj: {
-        condition: ConditionObject | LinkToCondition;
-        context: T;
-    }) => boolean;
-    continueIfConditionIsValid: (condition: ConditionObject | LinkToCondition, context$: ObservableInput<T>) => <T_1>(source$: import("rxjs").Observable<T_1>) => import("rxjs").Observable<T_1>;
-    subscribeOnAllDataAndContinueWhenConditionWillBeValid: (condition: ConditionObject | LinkToCondition, context$: ObservableInput<T>) => <T_2>(source$: import("rxjs").Observable<T_2>) => import("rxjs").Observable<T_2>;
-    validateConditionsAndRunFlow: (obj: {
-        validator: FlowValidator | FlowValidator[] | string;
-        context: T;
-    }) => boolean;
-    runHook(hookName: string, context: T): import("rxjs").Observable<T>;
-    runBackgroundFlows(groupId: string, context$: ObservableInput<T>, backgroundFlowsArr?: BackgroundFlow[]): void;
-    stopBackgrounFlows(groupId: string): void;
-    stopAllBackgrounFlows(): void;
+    runBackgroundFlows: (groupId: string, backgroundFlowsArr?: BackgroundFlow[]) => void;
+    stopBackgrounFlows: (groupId: string) => void;
+    stopAllBackgrounFlows: () => void;
+    runEngineBackgroundControls: (groupId: string, engineBackgroundControlsArr?: EngineBackgroundControl[]) => void;
+    stopEngineBackgroundControls: (groupId: string) => void;
+    stopAllEngineBackgroundControls: () => void;
+    mapContext: (mapping: string[]) => any;
+    validateCondition: (condition: ConditionObject | LinkToCondition) => boolean;
+    continueIfConditionIsValid: (condition: ConditionObject | LinkToCondition) => <T_1>(source$: Observable<T_1>) => Observable<T_1>;
+    subscribeOnAllDataAndContinueWhenConditionWillBeValid: (condition: ConditionObject | LinkToCondition) => <T_2>(source$: Observable<T_2>) => Observable<T_2>;
+    validateConditionsAndRunFlow: (validatorObj: FlowValidator | FlowValidator[] | string) => boolean;
 };

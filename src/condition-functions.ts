@@ -37,7 +37,7 @@ const getVariablesInCondition = (
   }
 };
 
-const mapContext = (context: any, mapping: string[]) =>
+export const mapContext = (context: any, mapping: string[]) =>
   !mapping.length ? context : mapContext(context?.[mapping[0]], mapping.slice(1));
 
 const makeBaseOperation = (operation: Operation, valueFromCondition: any, valueFromContext: any): boolean => {
