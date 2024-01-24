@@ -96,4 +96,11 @@ export type FlowValidator = FlowValidatorWithSuccessFlow | FlowValidatorWithFail
 export interface FlowValidatorMap {
     [flowvalidatorName: string]: FlowValidator | FlowValidator[];
 }
+export interface Config {
+    conditionsMap?: ConditionsMap;
+    flowValidatorMap?: FlowValidatorMap;
+    flowsMap?: FlowsMap;
+    hooks?: Hooks;
+    backgroundFlows?: BackgroundFlowsMap;
+}
 export {};

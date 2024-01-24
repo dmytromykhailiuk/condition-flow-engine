@@ -1,44 +1,26 @@
 import { FlowRunner } from './flow-runner';
-import { Flow, LinkToCondition, BackgroundFlow, BackgroundFlowsMap, Hooks, FlowsMap, ConditionsMap, ConditionObject, FlowValidator, FlowValidatorMap, EngineBackgroundControl, EngineBackgroundControlsMap } from './interfaces';
+import { Flow, LinkToCondition, BackgroundFlow, ConditionObject, FlowValidator, Config } from './interfaces';
 import { Observable, ObservableInput } from 'rxjs';
-export declare const createConditionFlowEngine: <T>({ flowRunner, context$, config: configFromPayload, }: {
+export declare const createConditionFlowEngine: <T>({ flowRunner, config: configFromPayload, }: {
     flowRunner: FlowRunner;
-    context$: ObservableInput<T>;
-    config?: {
-        conditionsMap?: ConditionsMap;
-        flowValidatorMap?: FlowValidatorMap;
-        flowsMap?: FlowsMap;
-        hooks?: Hooks;
-        backgroundFlows?: BackgroundFlowsMap;
-        engineBackgroundControls?: EngineBackgroundControlsMap;
-    };
+    config?: Config;
 }) => {
-    runFlow: (flow: Flow) => Observable<T>;
-    runHook: (hookName: string) => Observable<T>;
-    updateConfig: (fn: (_: {
-        conditionsMap?: ConditionsMap;
-        flowValidatorMap?: FlowValidatorMap;
-        flowsMap?: FlowsMap;
-        hooks?: Hooks;
-        backgroundFlows?: BackgroundFlowsMap;
-        engineBackgroundControls?: EngineBackgroundControlsMap;
-    }) => {
-        conditionsMap?: ConditionsMap;
-        flowValidatorMap?: FlowValidatorMap;
-        flowsMap?: FlowsMap;
-        hooks?: Hooks;
-        backgroundFlows?: BackgroundFlowsMap;
-        engineBackgroundControls?: EngineBackgroundControlsMap;
-    }) => void;
-    runBackgroundFlows: (groupId: string, backgroundFlowsArr?: BackgroundFlow[]) => void;
-    stopBackgrounFlows: (groupId: string) => void;
-    stopAllBackgrounFlows: () => void;
-    runEngineBackgroundControls: (groupId: string, engineBackgroundControlsArr?: EngineBackgroundControl[]) => void;
-    stopEngineBackgroundControls: (groupId: string) => void;
-    stopAllEngineBackgroundControls: () => void;
-    mapContext: (mapping: string[]) => any;
-    validateCondition: (condition: ConditionObject | LinkToCondition) => boolean;
-    continueIfConditionIsValid: (condition: ConditionObject | LinkToCondition) => <T_1>(source$: Observable<T_1>) => Observable<T_1>;
-    subscribeOnAllDataAndContinueWhenConditionWillBeValid: (condition: ConditionObject | LinkToCondition) => <T_2>(source$: Observable<T_2>) => Observable<T_2>;
-    validateConditionsAndRunFlow: (validatorObj: FlowValidator | FlowValidator[] | string) => boolean;
+    runFlow: (flow: Flow, context?: T) => Observable<T>;
+    updateConfig: (fn: (_: Config) => Config) => void;
+    isFlowInProgress: () => boolean;
+    continueWhenFlowFinished: () => <T_1>(source$: Observable<T_1>) => Observable<T_1>;
+    validateCondition: (obj: {
+        condition: ConditionObject | LinkToCondition;
+        context: T;
+    }) => boolean;
+    continueIfConditionIsValid: (condition: ConditionObject | LinkToCondition, context$: ObservableInput<T>) => <T_2>(source$: Observable<T_2>) => Observable<T_2>;
+    subscribeOnAllDataAndContinueWhenConditionWillBeValid: (condition: ConditionObject | LinkToCondition, context$: ObservableInput<T>) => <T_3>(source$: Observable<T_3>) => Observable<T_3>;
+    validateConditionsAndRunFlow: (obj: {
+        validator: FlowValidator | FlowValidator[] | string;
+        context: T;
+    }) => boolean;
+    runHook(hookName: string, context: T): Observable<T>;
+    runBackgroundFlows(groupId: string, context$: ObservableInput<T>, backgroundFlowsArr?: BackgroundFlow[]): void;
+    stopBackgroundFlows(groupId: string): void;
+    stopAllBackgroundFlows(): void;
 };

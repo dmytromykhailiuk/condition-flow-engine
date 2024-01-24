@@ -10,9 +10,9 @@ const flowIsRunning$ = new rxjs_1.BehaviorSubject([]);
 const buildFlow = ({ id, actions, actions$, dispatch, context, prefix, }) => {
     const currentAction = actions[0];
     Promise.resolve().then(() => {
-        dispatch({ ...currentAction, payload: { ...((currentAction === null || currentAction === void 0 ? void 0 : currentAction.payload) || {}), context } });
+        dispatch({ ...currentAction, context });
     });
-    return actions$.pipe((0, rxjs_1.filter)((action) => action.type === getSuccessActionForFlow(currentAction.type)), (0, rxjs_1.take)(1), (0, rxjs_1.tap)(({ payload: { context } }) => {
+    return actions$.pipe((0, rxjs_1.filter)((action) => action.type === getSuccessActionForFlow(currentAction.type)), (0, rxjs_1.take)(1), (0, rxjs_1.tap)(({ context }) => {
         if (actions.length <= 1) {
             Promise.resolve().then(() => {
                 dispatch({
@@ -23,7 +23,7 @@ const buildFlow = ({ id, actions, actions$, dispatch, context, prefix, }) => {
             });
             flowIsRunning$.next(flowIsRunning$.getValue().slice(1));
         }
-    }), (0, rxjs_1.filter)(() => actions.length > 1), (0, rxjs_1.switchMap)(({ payload: { context } }) => buildFlow({
+    }), (0, rxjs_1.filter)(() => actions.length > 1), (0, rxjs_1.switchMap)(({ context }) => buildFlow({
         id,
         actions: actions.slice(1),
         actions$,
@@ -43,7 +43,7 @@ const createFlowRunner = ({ actions$, dispatch, prefix = '[FLOW]', }) => {
         flowIsRunning$.next([...flowIsRunning$.getValue(), id]);
     }), (0, exports.continueWhenFlowIsNotRunning)(), (0, rxjs_1.switchMap)(({ actions, context, id }) => buildFlow({ id, actions, actions$, dispatch, context, prefix })))
         .subscribe();
-    return ((actions, context) => {
+    return ((actions, context = {}) => {
         const flowId = generateId();
         Promise.resolve().then(() => {
             dispatch({

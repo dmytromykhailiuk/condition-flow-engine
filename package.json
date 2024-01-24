@@ -1,6 +1,6 @@
 {
   "name": "@dmytromykhailiuk/condition-flow-engine",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Flexible flow management solution",
   "files": [
     "dist/src"

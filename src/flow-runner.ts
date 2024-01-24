@@ -31,13 +31,13 @@ const buildFlow = <T>({
   const currentAction = actions[0];
 
   Promise.resolve().then(() => {
-    dispatch({ ...currentAction, payload: { ...(currentAction?.payload || {}), context } });
+    dispatch({ ...currentAction, context });
   });
 
   return actions$.pipe(
     filter((action) => action.type === getSuccessActionForFlow(currentAction.type)),
     take(1),
-    tap(({ payload: { context } }) => {
+    tap(({ context }) => {
       if (actions.length <= 1) {
         Promise.resolve().then(() => {
           dispatch({
@@ -51,7 +51,7 @@ const buildFlow = <T>({
       }
     }),
     filter(() => actions.length > 1),
-    switchMap(({ payload: { context } }) =>
+    switchMap(({ context }) =>
       buildFlow({
         id,
         actions: actions.slice(1),
@@ -99,7 +99,7 @@ export const createFlowRunner = <T>({
     )
     .subscribe();
 
-  return ((actions: Action[], context: T) => {
+  return ((actions: Action[], context: T = {} as T) => {
     const flowId = generateId();
 
     Promise.resolve().then(() => {
