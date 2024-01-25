@@ -1,5 +1,5 @@
-import { FlowRunner } from './flow-runner';
-import { Flow, LinkToCondition, BackgroundFlow, ConditionObject, FlowValidator, Config } from './interfaces';
+import { FlowRunner, createFlowRunner } from './flow-runner';
+import { Flow, LinkToCondition, BackgroundFlow, ConditionObject, FlowValidator, Config, Action } from './interfaces';
 import {
   Observable,
   ObservableInput,
@@ -10,6 +10,7 @@ import {
   filter,
   map,
   BehaviorSubject,
+  Subject,
   switchMap,
 } from 'rxjs';
 import { validateCondition } from './condition-functions';
@@ -21,19 +22,29 @@ import { runBackgroundSideEffects } from './background-side-effects';
 import { validateConditionsAndRunFlow } from './validate-conditions-and-run-flow';
 
 export const createConditionFlowEngine = <T>({
-  flowRunner,
+  actions$,
+  prefix,
+  dispatch,
   config: configFromPayload = {},
 }: {
-  flowRunner: FlowRunner;
+  actions$: Subject<Action>;
+  prefix?: string;
+  dispatch: (_: Action<string>) => void;
   config?: Config;
 }) => {
-  let config = configFromPayload;
+  const config = { data: configFromPayload };
+
+  const flowRunner = createFlowRunner({
+    actions$,
+    dispatch,
+    prefix,
+  });
 
   const flowInProgress$ = new BehaviorSubject(false);
 
   const runFlow = (flow: Flow, context: T = {} as T) => {
     flowInProgress$.next(true);
-    const actionsForFlow = typeof flow === 'string' ? config?.flowsMap[flow] : flow;
+    const actionsForFlow = typeof flow === 'string' ? config?.data?.flowsMap[flow] : flow;
 
     return flowRunner<T>(actionsForFlow, context).pipe(
       tap(() => {
@@ -43,7 +54,7 @@ export const createConditionFlowEngine = <T>({
   };
 
   const updateConfig = (fn: (_: Config) => Config) => {
-    config = fn(config);
+    config.data = fn(config.data);
   };
 
   const backgroundFlowSubscriptions: { [groupId: string]: Subscription } = {};
@@ -65,33 +76,33 @@ export const createConditionFlowEngine = <T>({
           ),
         ),
     validateCondition: (obj: { condition: ConditionObject | LinkToCondition; context: T }) =>
-      validateCondition<T>({ ...obj, globalContext: obj.context, conditionsMap: config?.conditionsMap }),
+      validateCondition<T>({ ...obj, globalContext: obj.context, conditionsMap: config?.data?.conditionsMap }),
     continueIfConditionIsValid: (condition: ConditionObject | LinkToCondition, context$: ObservableInput<T>) =>
-      continueIfConditionIsValid<T>(condition, context$, config?.conditionsMap),
+      continueIfConditionIsValid<T>(condition, context$, config?.data?.conditionsMap),
     subscribeOnAllDataAndContinueWhenConditionWillBeValid: (
       condition: ConditionObject | LinkToCondition,
       context$: ObservableInput<T>,
-    ) => subscribeOnAllDataAndContinueWhenConditionWillBeValid<T>(condition, context$, config?.conditionsMap),
+    ) => subscribeOnAllDataAndContinueWhenConditionWillBeValid<T>(condition, context$, config?.data?.conditionsMap),
     validateConditionsAndRunFlow: (obj: { validator: FlowValidator | FlowValidator[] | string; context: T }) => {
       let validator = obj.validator;
 
       if (typeof validator === 'string') {
-        validator = config?.flowValidatorMap[validator];
+        validator = config?.data?.flowValidatorMap[validator];
       }
 
       return validateConditionsAndRunFlow<T>({
         ...obj,
         validator,
         flowRunner: runFlow,
-        conditionsMap: config?.conditionsMap,
+        conditionsMap: config?.data?.conditionsMap,
       });
     },
     runHook(hookName: string, context: T) {
-      if (!config?.hooks[hookName]) {
+      if (!config?.data?.hooks[hookName]) {
         return of(context);
       }
 
-      for (const conditionObject of config?.hooks?.[hookName] || []) {
+      for (const conditionObject of config?.data?.hooks?.[hookName] || []) {
         if (typeof conditionObject === 'string') {
           return runFlow(conditionObject as Flow, context);
         }
@@ -100,7 +111,7 @@ export const createConditionFlowEngine = <T>({
           validateCondition({
             condition: (conditionObject as any).condition,
             globalContext: context,
-            conditionsMap: config?.conditionsMap,
+            conditionsMap: config?.data?.conditionsMap,
           })
         ) {
           return runFlow((conditionObject as any).flow, context);
@@ -116,9 +127,9 @@ export const createConditionFlowEngine = <T>({
 
       backgroundFlowSubscriptions[groupId] = runBackgroundSideEffects<T>(
         context$,
-        backgroundFlowsArr || config?.backgroundFlows[groupId] || [],
+        backgroundFlowsArr || config?.data?.backgroundFlows[groupId] || [],
         runFlow,
-        config?.conditionsMap,
+        config?.data?.conditionsMap,
       );
     },
     stopBackgroundFlows(groupId: string) {

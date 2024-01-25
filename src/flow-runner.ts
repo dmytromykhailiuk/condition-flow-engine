@@ -1,6 +1,6 @@
 import { validateCondition } from './condition-functions';
 import { Observable, BehaviorSubject, switchMap, filter, take, map, tap, mergeMap, of, takeUntil, Subject } from 'rxjs';
-import { Action, ConditionObject } from './interfaces';
+import { Action, ConditionObject, Config } from './interfaces';
 
 const generateId = () =>
   `${Date.now()}${Array.from({ length: 7 }, () => String(Math.floor(Math.random() * 10))).join('')}`;
@@ -10,8 +10,11 @@ const getEndActionForFlow = (type: string) => `${type} End`;
 const START_FLOW_ACTION_TYPE = '__START_RUN_FLOW__';
 const FINISH_FLOW_ACTION_TYPE = '__FINISH_RUN_FLOW__';
 
-const FORCE_FINISH_FLOW = '__RUN_FINISH_FLOW__';
+const FORCE_FINISH_FLOW = '__FORCE_FINISH_FLOW__';
 const FORCE_FINISH_FLOW_END = getEndActionForFlow(FORCE_FINISH_FLOW);
+
+const RUN_FLOW_IN_SCOPE = '__RUN_FLOW_IN_SCOPE__';
+const RUN_FLOW_IN_SCOPE_END = getEndActionForFlow(RUN_FLOW_IN_SCOPE);
 
 const RUN_CONDITION_FLOW = '__RUN_CONDITION_FLOW__';
 const RUN_CONDITION_FLOW_END = getEndActionForFlow(RUN_CONDITION_FLOW);
@@ -36,6 +39,7 @@ const buildNestedFlow = <T>({
   flowTag,
   context,
   finishParentFlow,
+  config,
 }: {
   relatedAction: Action;
   actions: Action[];
@@ -45,6 +49,9 @@ const buildNestedFlow = <T>({
   buildFlowFn: (obj: any) => Observable<any>;
   flowTag?: string;
   context: T;
+  config?: {
+    data: Config;
+  };
   finishParentFlow: (input: { tag?: string; context?: T; stopNestedFlows?: () => void }) => void;
 }) => {
   const nestedFlowId = generateId();
@@ -59,6 +66,7 @@ const buildNestedFlow = <T>({
       prefix,
       flowTag,
       finishParentFlow: finishParentFlow || relatedAction.finishFlow,
+      config,
     }).subscribe();
   });
 
@@ -82,6 +90,7 @@ const buildNestedRepeatedFlow = <T>({
   times,
   conditionToRepeat,
   finishParentFlow,
+  config,
 }: {
   relatedAction: Action;
   actions: Action[];
@@ -94,6 +103,9 @@ const buildNestedRepeatedFlow = <T>({
   times?: number;
   conditionToRepeat?: ConditionObject<T>;
   finishParentFlow: (input: { tag?: string; context?: T; stopNestedFlows?: () => void }) => void;
+  config?: {
+    data: Config;
+  };
 }) => {
   let currentContext = context;
   let count = 0;
@@ -138,7 +150,10 @@ const buildNestedRepeatedFlow = <T>({
           return false;
         }
         return validateCondition({
-          condition: conditionToRepeat,
+          condition:
+            typeof conditionToRepeat !== 'string'
+              ? conditionToRepeat
+              : config?.data?.conditionsMap?.[conditionToRepeat],
           globalContext: currentContext,
         });
       }),
@@ -158,6 +173,7 @@ const buildNestedRepeatedFlow = <T>({
           buildFlowFn,
           context: currentContext,
           finishParentFlow: finishRepeatedFlow,
+          config,
         }),
       ),
       tap(({ context }) => {
@@ -179,13 +195,14 @@ const buildNestedRepeatedFlow = <T>({
 
 const buildFlow = <T>({
   id = generateId(),
-  actions,
+  actions: actionsFromPayload,
   actions$,
   dispatch,
   context,
   prefix,
   flowTag,
   finishParentFlow = () => {},
+  config,
 }: {
   id?: string;
   actions: Action[];
@@ -195,7 +212,14 @@ const buildFlow = <T>({
   prefix: string;
   flowTag?: string;
   finishParentFlow?: (input: { tag?: string; context?: T; stopNestedFlows?: () => void }) => void;
+  config?: {
+    data: Config;
+  };
 }) => {
+  const actions: Action[] = Array.isArray(actionsFromPayload)
+    ? actionsFromPayload
+    : config?.data?.flowsMap?.[actionsFromPayload];
+
   if (actions.length === 0) {
     return of(null);
   }
@@ -260,6 +284,7 @@ const buildFlow = <T>({
           flowTag,
           buildFlowFn: buildFlow,
           finishParentFlow: finishFlow,
+          config,
         }).pipe(map(({ context }) => context as T));
       },
       runRepeatedFlow: ({
@@ -287,6 +312,7 @@ const buildFlow = <T>({
           times,
           conditionToRepeat,
           finishParentFlow: finishFlow,
+          config,
         });
       },
       finishFlow,
@@ -313,6 +339,7 @@ const buildFlow = <T>({
         prefix,
         finishParentFlow,
         flowTag,
+        config,
       }),
     ),
     takeUntil(finishFlow$.pipe(take(1))),
@@ -336,13 +363,19 @@ export const createFlowRunner = <T>({
   actions$,
   dispatch,
   prefix = '[FLOW]',
+  config,
 }: {
   actions$: Observable<Action>;
   dispatch: (_: Action) => void;
   prefix?: string;
+  config?: {
+    data: Config;
+  };
 }): FlowRunner => {
   const runFlowActionType = `${prefix} ${START_FLOW_ACTION_TYPE}`;
   const endFlowActionType = `${prefix} ${FINISH_FLOW_ACTION_TYPE}`;
+  const runFlowInScope = `${prefix} ${RUN_FLOW_IN_SCOPE}`;
+  const runFlowInScopeEnd = `${prefix} ${RUN_FLOW_IN_SCOPE_END}`;
   const runConditionalFlow = `${prefix} ${RUN_CONDITION_FLOW}`;
   const runConditionalFlowEnd = `${prefix} ${RUN_CONDITION_FLOW_END}`;
   const runRepeatedFlow = `${prefix} ${RUN_REPEATED_FLOW}`;
@@ -368,6 +401,7 @@ export const createFlowRunner = <T>({
           context,
           prefix,
           flowTag: '#main',
+          config,
         }),
       ),
     )
@@ -383,6 +417,33 @@ export const createFlowRunner = <T>({
           type: forceFinishFlowEnd,
           context: action.context,
           id: action.id,
+        });
+      }),
+    )
+    .subscribe();
+
+  actions$
+    .pipe(
+      filter((action) => action.type === runFlowInScope),
+      switchMap((action) => {
+        return buildNestedFlow<T>({
+          relatedAction: action,
+          actions: action.actions,
+          actions$,
+          context: action.context,
+          dispatch,
+          flowTag: action.flowTag,
+          prefix,
+          buildFlowFn: buildFlow,
+          finishParentFlow: action.finishFlow,
+          config,
+        });
+      }),
+      tap(({ context, id }) => {
+        dispatch({
+          type: runFlowInScopeEnd,
+          context,
+          id,
         });
       }),
     )
@@ -409,7 +470,7 @@ export const createFlowRunner = <T>({
       switchMap((action) => {
         const actions = (action.conditions || []).find((obj) =>
           validateCondition({
-            condition: obj.condition,
+            condition: typeof obj.condition !== 'string' ? obj.condition : config?.data?.conditionsMap?.[obj.condition],
             globalContext: action.context,
           }),
         )?.actions;
@@ -428,6 +489,7 @@ export const createFlowRunner = <T>({
           prefix,
           buildFlowFn: buildFlow,
           finishParentFlow: action.finishFlow,
+          config,
         });
       }),
       tap(({ context, id }) => {
@@ -456,6 +518,7 @@ export const createFlowRunner = <T>({
           times: action.times,
           conditionToRepeat: action.conditionToRepeat,
           finishParentFlow: action.finishFlow,
+          config,
         }).pipe(
           tap((context) => {
             dispatch({

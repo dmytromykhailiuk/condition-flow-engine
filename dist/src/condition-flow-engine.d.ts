@@ -1,8 +1,9 @@
-import { FlowRunner } from './flow-runner';
-import { Flow, LinkToCondition, BackgroundFlow, ConditionObject, FlowValidator, Config } from './interfaces';
-import { Observable, ObservableInput } from 'rxjs';
-export declare const createConditionFlowEngine: <T>({ flowRunner, config: configFromPayload, }: {
-    flowRunner: FlowRunner;
+import { Flow, LinkToCondition, BackgroundFlow, ConditionObject, FlowValidator, Config, Action } from './interfaces';
+import { Observable, ObservableInput, Subject } from 'rxjs';
+export declare const createConditionFlowEngine: <T>({ actions$, prefix, dispatch, config: configFromPayload, }: {
+    actions$: Subject<Action>;
+    prefix?: string;
+    dispatch: (_: Action<string>) => void;
     config?: Config;
 }) => {
     runFlow: (flow: Flow, context?: T) => Observable<T>;

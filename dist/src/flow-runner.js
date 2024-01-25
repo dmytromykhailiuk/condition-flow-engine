@@ -7,8 +7,10 @@ const generateId = () => `${Date.now()}${Array.from({ length: 7 }, () => String(
 const getEndActionForFlow = (type) => `${type} End`;
 const START_FLOW_ACTION_TYPE = '__START_RUN_FLOW__';
 const FINISH_FLOW_ACTION_TYPE = '__FINISH_RUN_FLOW__';
-const FORCE_FINISH_FLOW = '__RUN_FINISH_FLOW__';
+const FORCE_FINISH_FLOW = '__FORCE_FINISH_FLOW__';
 const FORCE_FINISH_FLOW_END = getEndActionForFlow(FORCE_FINISH_FLOW);
+const RUN_FLOW_IN_SCOPE = '__RUN_FLOW_IN_SCOPE__';
+const RUN_FLOW_IN_SCOPE_END = getEndActionForFlow(RUN_FLOW_IN_SCOPE);
 const RUN_CONDITION_FLOW = '__RUN_CONDITION_FLOW__';
 const RUN_CONDITION_FLOW_END = getEndActionForFlow(RUN_CONDITION_FLOW);
 const RUN_REPEATED_FLOW = '__RUN_REPEATED_FLOW__';
@@ -16,7 +18,7 @@ const RUN_REPEATED_FLOW_END = getEndActionForFlow(RUN_REPEATED_FLOW);
 const RUN_DYNAMIC_ACTION = '__RUN_DYNAMIC_ACTION__';
 const RUN_DYNAMIC_ACTION_END = getEndActionForFlow(RUN_DYNAMIC_ACTION);
 const flowIsRunning$ = new rxjs_1.BehaviorSubject([]);
-const buildNestedFlow = ({ relatedAction, actions, actions$, dispatch, prefix, buildFlowFn, flowTag, context, finishParentFlow, }) => {
+const buildNestedFlow = ({ relatedAction, actions, actions$, dispatch, prefix, buildFlowFn, flowTag, context, finishParentFlow, config, }) => {
     const nestedFlowId = generateId();
     Promise.resolve().then(() => {
         buildFlowFn({
@@ -28,11 +30,12 @@ const buildNestedFlow = ({ relatedAction, actions, actions$, dispatch, prefix, b
             prefix,
             flowTag,
             finishParentFlow: finishParentFlow || relatedAction.finishFlow,
+            config,
         }).subscribe();
     });
     return actions$.pipe((0, rxjs_1.filter)((action) => action.type === `${prefix} ${FINISH_FLOW_ACTION_TYPE}`), (0, rxjs_1.filter)(({ id }) => id === nestedFlowId), (0, rxjs_1.take)(1), (0, rxjs_1.map)(({ context }) => ({ context, id: relatedAction.id })));
 };
-const buildNestedRepeatedFlow = ({ relatedAction, actions, actions$, dispatch, prefix, buildFlowFn, flowTag, context, times, conditionToRepeat, finishParentFlow, }) => {
+const buildNestedRepeatedFlow = ({ relatedAction, actions, actions$, dispatch, prefix, buildFlowFn, flowTag, context, times, conditionToRepeat, finishParentFlow, config, }) => {
     let currentContext = context;
     let count = 0;
     const finishRepeatedFlow$ = new rxjs_1.Subject();
@@ -55,6 +58,7 @@ const buildNestedRepeatedFlow = ({ relatedAction, actions, actions$, dispatch, p
     };
     const runRepeatedFlow = () => {
         return (0, rxjs_1.of)({}).pipe((0, rxjs_1.map)(() => {
+            var _a, _b;
             if (typeof times === 'number' && times > 0) {
                 return count !== times;
             }
@@ -62,7 +66,9 @@ const buildNestedRepeatedFlow = ({ relatedAction, actions, actions$, dispatch, p
                 return false;
             }
             return (0, condition_functions_1.validateCondition)({
-                condition: conditionToRepeat,
+                condition: typeof conditionToRepeat !== 'string'
+                    ? conditionToRepeat
+                    : (_b = (_a = config === null || config === void 0 ? void 0 : config.data) === null || _a === void 0 ? void 0 : _a.conditionsMap) === null || _b === void 0 ? void 0 : _b[conditionToRepeat],
                 globalContext: currentContext,
             });
         }), (0, rxjs_1.tap)((shouldRepead) => {
@@ -78,6 +84,7 @@ const buildNestedRepeatedFlow = ({ relatedAction, actions, actions$, dispatch, p
             buildFlowFn,
             context: currentContext,
             finishParentFlow: finishRepeatedFlow,
+            config,
         })), (0, rxjs_1.tap)(({ context }) => {
             count++;
             currentContext = context;
@@ -90,7 +97,11 @@ const buildNestedRepeatedFlow = ({ relatedAction, actions, actions$, dispatch, p
     });
     return finishRepeatedFlow$.pipe((0, rxjs_1.take)(1));
 };
-const buildFlow = ({ id = generateId(), actions, actions$, dispatch, context, prefix, flowTag, finishParentFlow = () => { }, }) => {
+const buildFlow = ({ id = generateId(), actions: actionsFromPayload, actions$, dispatch, context, prefix, flowTag, finishParentFlow = () => { }, config, }) => {
+    var _a, _b;
+    const actions = Array.isArray(actionsFromPayload)
+        ? actionsFromPayload
+        : (_b = (_a = config === null || config === void 0 ? void 0 : config.data) === null || _a === void 0 ? void 0 : _a.flowsMap) === null || _b === void 0 ? void 0 : _b[actionsFromPayload];
     if (actions.length === 0) {
         return (0, rxjs_1.of)(null);
     }
@@ -139,6 +150,7 @@ const buildFlow = ({ id = generateId(), actions, actions$, dispatch, context, pr
                     flowTag,
                     buildFlowFn: buildFlow,
                     finishParentFlow: finishFlow,
+                    config,
                 }).pipe((0, rxjs_1.map)(({ context }) => context));
             },
             runRepeatedFlow: ({ actions, flowTag, context, times, conditionToRepeat, }) => {
@@ -154,6 +166,7 @@ const buildFlow = ({ id = generateId(), actions, actions$, dispatch, context, pr
                     times,
                     conditionToRepeat,
                     finishParentFlow: finishFlow,
+                    config,
                 });
             },
             finishFlow,
@@ -172,15 +185,18 @@ const buildFlow = ({ id = generateId(), actions, actions$, dispatch, context, pr
         prefix,
         finishParentFlow,
         flowTag,
+        config,
     })), (0, rxjs_1.takeUntil)(finishFlow$.pipe((0, rxjs_1.take)(1))));
 };
 const continueWhenFlowIsNotRunning = () => function (source$) {
     return source$.pipe((0, rxjs_1.mergeMap)((value) => flowIsRunning$.pipe((0, rxjs_1.filter)((flows) => flows.length === 0 || flows[0] === (value === null || value === void 0 ? void 0 : value.id)), (0, rxjs_1.take)(1), (0, rxjs_1.map)(() => value))));
 };
 exports.continueWhenFlowIsNotRunning = continueWhenFlowIsNotRunning;
-const createFlowRunner = ({ actions$, dispatch, prefix = '[FLOW]', }) => {
+const createFlowRunner = ({ actions$, dispatch, prefix = '[FLOW]', config, }) => {
     const runFlowActionType = `${prefix} ${START_FLOW_ACTION_TYPE}`;
     const endFlowActionType = `${prefix} ${FINISH_FLOW_ACTION_TYPE}`;
+    const runFlowInScope = `${prefix} ${RUN_FLOW_IN_SCOPE}`;
+    const runFlowInScopeEnd = `${prefix} ${RUN_FLOW_IN_SCOPE_END}`;
     const runConditionalFlow = `${prefix} ${RUN_CONDITION_FLOW}`;
     const runConditionalFlowEnd = `${prefix} ${RUN_CONDITION_FLOW_END}`;
     const runRepeatedFlow = `${prefix} ${RUN_REPEATED_FLOW}`;
@@ -200,6 +216,7 @@ const createFlowRunner = ({ actions$, dispatch, prefix = '[FLOW]', }) => {
         context,
         prefix,
         flowTag: '#main',
+        config,
     })))
         .subscribe();
     actions$
@@ -209,6 +226,28 @@ const createFlowRunner = ({ actions$, dispatch, prefix = '[FLOW]', }) => {
             type: forceFinishFlowEnd,
             context: action.context,
             id: action.id,
+        });
+    }))
+        .subscribe();
+    actions$
+        .pipe((0, rxjs_1.filter)((action) => action.type === runFlowInScope), (0, rxjs_1.switchMap)((action) => {
+        return buildNestedFlow({
+            relatedAction: action,
+            actions: action.actions,
+            actions$,
+            context: action.context,
+            dispatch,
+            flowTag: action.flowTag,
+            prefix,
+            buildFlowFn: buildFlow,
+            finishParentFlow: action.finishFlow,
+            config,
+        });
+    }), (0, rxjs_1.tap)(({ context, id }) => {
+        dispatch({
+            type: runFlowInScopeEnd,
+            context,
+            id,
         });
     }))
         .subscribe();
@@ -225,10 +264,13 @@ const createFlowRunner = ({ actions$, dispatch, prefix = '[FLOW]', }) => {
     actions$
         .pipe((0, rxjs_1.filter)((action) => action.type === runConditionalFlow), (0, rxjs_1.switchMap)((action) => {
         var _a;
-        const actions = (_a = (action.conditions || []).find((obj) => (0, condition_functions_1.validateCondition)({
-            condition: obj.condition,
-            globalContext: action.context,
-        }))) === null || _a === void 0 ? void 0 : _a.actions;
+        const actions = (_a = (action.conditions || []).find((obj) => {
+            var _a, _b;
+            return (0, condition_functions_1.validateCondition)({
+                condition: typeof obj.condition !== 'string' ? obj.condition : (_b = (_a = config === null || config === void 0 ? void 0 : config.data) === null || _a === void 0 ? void 0 : _a.conditionsMap) === null || _b === void 0 ? void 0 : _b[obj.condition],
+                globalContext: action.context,
+            });
+        })) === null || _a === void 0 ? void 0 : _a.actions;
         if (!actions) {
             return (0, rxjs_1.of)(action);
         }
@@ -242,6 +284,7 @@ const createFlowRunner = ({ actions$, dispatch, prefix = '[FLOW]', }) => {
             prefix,
             buildFlowFn: buildFlow,
             finishParentFlow: action.finishFlow,
+            config,
         });
     }), (0, rxjs_1.tap)(({ context, id }) => {
         dispatch({
@@ -264,6 +307,7 @@ const createFlowRunner = ({ actions$, dispatch, prefix = '[FLOW]', }) => {
         times: action.times,
         conditionToRepeat: action.conditionToRepeat,
         finishParentFlow: action.finishFlow,
+        config,
     }).pipe((0, rxjs_1.tap)((context) => {
         dispatch({
             type: runRepeatedFlowEnd,
