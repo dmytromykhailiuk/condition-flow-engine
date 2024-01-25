@@ -24,7 +24,7 @@ const RUN_DYNAMIC_ACTION_END = getEndActionForFlow(RUN_DYNAMIC_ACTION);
 
 const flowIsRunning$ = new BehaviorSubject<string[]>([]);
 
-export type FlowRunner = <T>(actions: Action[], context: T) => Observable<T>;
+export type FlowRunner = <T>(actions: Action[], context?: T) => Observable<T>;
 
 const buildNestedFlow = <T>({
   relatedAction,
@@ -377,7 +377,7 @@ export const createFlowRunner = <T>({
     .pipe(
       filter((action) => action.type === forceFinishFlow),
       tap((action) => {
-        action.finishFlow(action.tag);
+        action.finishFlow({ tag: action.tag, context: action.context });
 
         dispatch({
           type: forceFinishFlowEnd,

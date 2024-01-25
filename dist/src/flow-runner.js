@@ -204,7 +204,7 @@ const createFlowRunner = ({ actions$, dispatch, prefix = '[FLOW]', }) => {
         .subscribe();
     actions$
         .pipe((0, rxjs_1.filter)((action) => action.type === forceFinishFlow), (0, rxjs_1.tap)((action) => {
-        action.finishFlow(action.tag);
+        action.finishFlow({ tag: action.tag, context: action.context });
         dispatch({
             type: forceFinishFlowEnd,
             context: action.context,
