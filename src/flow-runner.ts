@@ -1,53 +1,305 @@
-import { Observable, BehaviorSubject, switchMap, filter, take, map, tap, mergeMap } from 'rxjs';
-import { Action } from './interfaces';
+import { validateCondition } from './condition-functions';
+import { Observable, BehaviorSubject, switchMap, filter, take, map, tap, mergeMap, of, takeUntil, Subject } from 'rxjs';
+import { Action, ConditionObject } from './interfaces';
 
 const generateId = () =>
   `${Date.now()}${Array.from({ length: 7 }, () => String(Math.floor(Math.random() * 10))).join('')}`;
 
+const getEndActionForFlow = (type: string) => `${type} End`;
+
 const START_FLOW_ACTION_TYPE = '__START_RUN_FLOW__';
 const FINISH_FLOW_ACTION_TYPE = '__FINISH_RUN_FLOW__';
 
-const getSuccessActionForFlow = (type: string) => `${type} Success`;
+const FORCE_FINISH_FLOW = '__RUN_FINISH_FLOW__';
+const FORCE_FINISH_FLOW_END = getEndActionForFlow(FORCE_FINISH_FLOW);
+
+const RUN_CONDITION_FLOW = '__RUN_CONDITION_FLOW__';
+const RUN_CONDITION_FLOW_END = getEndActionForFlow(RUN_CONDITION_FLOW);
+
+const RUN_REPEATED_FLOW = '__RUN_REPEATED_FLOW__';
+const RUN_REPEATED_FLOW_END = getEndActionForFlow(RUN_REPEATED_FLOW);
+
+const RUN_DYNAMIC_ACTION = '__RUN_DYNAMIC_ACTION__';
+const RUN_DYNAMIC_ACTION_END = getEndActionForFlow(RUN_DYNAMIC_ACTION);
 
 const flowIsRunning$ = new BehaviorSubject<string[]>([]);
 
 export type FlowRunner = <T>(actions: Action[], context: T) => Observable<T>;
 
+const buildNestedFlow = <T>({
+  relatedAction,
+  actions,
+  actions$,
+  dispatch,
+  prefix,
+  buildFlowFn,
+  flowTag,
+  context,
+  finishParentFlow,
+}: {
+  relatedAction: Action;
+  actions: Action[];
+  actions$: Observable<Action>;
+  dispatch: (_: Action) => void;
+  prefix: string;
+  buildFlowFn: (obj: any) => Observable<any>;
+  flowTag?: string;
+  context: T;
+  finishParentFlow: (input: { tag?: string; context?: T; stopNestedFlows?: () => void }) => void;
+}) => {
+  const nestedFlowId = generateId();
+
+  Promise.resolve().then(() => {
+    buildFlowFn({
+      id: nestedFlowId,
+      actions,
+      actions$,
+      dispatch,
+      context,
+      prefix,
+      flowTag,
+      finishParentFlow: finishParentFlow || relatedAction.finishFlow,
+    }).subscribe();
+  });
+
+  return actions$.pipe(
+    filter((action) => action.type === `${prefix} ${FINISH_FLOW_ACTION_TYPE}`),
+    filter(({ id }) => id === nestedFlowId),
+    take(1),
+    map(({ context }) => ({ context, id: relatedAction.id })),
+  );
+};
+
+const buildNestedRepeatedFlow = <T>({
+  relatedAction,
+  actions,
+  actions$,
+  dispatch,
+  prefix,
+  buildFlowFn,
+  flowTag,
+  context,
+  times,
+  conditionToRepeat,
+  finishParentFlow,
+}: {
+  relatedAction: Action;
+  actions: Action[];
+  actions$: Observable<Action>;
+  dispatch: (_: Action) => void;
+  prefix: string;
+  buildFlowFn: (obj: any) => Observable<any>;
+  flowTag?: string;
+  context: T;
+  times?: number;
+  conditionToRepeat?: ConditionObject<T>;
+  finishParentFlow: (input: { tag?: string; context?: T; stopNestedFlows?: () => void }) => void;
+}) => {
+  let currentContext = context;
+  let count = 0;
+
+  const finishRepeatedFlow$ = new Subject<T>();
+
+  const finishRepeatedFlow = ({
+    tag,
+    context = {} as T,
+    stopNestedFlows = () => {},
+  }: {
+    tag?: string;
+    context: T;
+    stopNestedFlows?: () => void;
+  }) => {
+    if (tag === undefined || tag === flowTag) {
+      finishRepeatedFlow$.next(context);
+
+      stopNestedFlows();
+      return;
+    }
+
+    if (tag) {
+      finishParentFlow({
+        tag,
+        context,
+        stopNestedFlows: () => {
+          finishRepeatedFlow$.next(context);
+          stopNestedFlows();
+        },
+      });
+    }
+  };
+
+  const runRepeatedFlow = () => {
+    return of({}).pipe(
+      map(() => {
+        if (typeof times === 'number' && times > 0) {
+          return count !== times;
+        }
+        if (!conditionToRepeat) {
+          return false;
+        }
+        return validateCondition({
+          condition: conditionToRepeat,
+          globalContext: currentContext,
+        });
+      }),
+      tap((shouldRepead) => {
+        if (!shouldRepead) {
+          finishRepeatedFlow({ context: currentContext });
+        }
+      }),
+      filter(Boolean),
+      switchMap(() =>
+        buildNestedFlow({
+          relatedAction,
+          actions,
+          actions$,
+          dispatch,
+          prefix,
+          buildFlowFn,
+          context: currentContext,
+          finishParentFlow: finishRepeatedFlow,
+        }),
+      ),
+      tap(({ context }) => {
+        count++;
+        currentContext = context;
+      }),
+      switchMap(() => runRepeatedFlow()),
+    );
+  };
+
+  Promise.resolve().then(() => {
+    runRepeatedFlow()
+      .pipe(takeUntil(finishRepeatedFlow$.pipe(take(1))))
+      .subscribe();
+  });
+
+  return finishRepeatedFlow$.pipe(take(1));
+};
+
 const buildFlow = <T>({
-  id,
+  id = generateId(),
   actions,
   actions$,
   dispatch,
   context,
   prefix,
+  flowTag,
+  finishParentFlow = () => {},
 }: {
-  id: string;
-  actions: Action;
+  id?: string;
+  actions: Action[];
   actions$: Observable<Action>;
   dispatch: (_: Action) => void;
   context: T;
   prefix: string;
+  flowTag?: string;
+  finishParentFlow?: (input: { tag?: string; context?: T; stopNestedFlows?: () => void }) => void;
 }) => {
+  if (actions.length === 0) {
+    return of(null);
+  }
+
   const currentAction = actions[0];
 
+  const finishFlow$ = new Subject<void>();
+
+  const finishFlow = ({
+    tag,
+    context = {} as T,
+    stopNestedFlows = () => {},
+  }: {
+    tag?: string;
+    context: T;
+    stopNestedFlows?: () => void;
+  }) => {
+    if (tag === undefined || tag === flowTag) {
+      Promise.resolve().then(() => {
+        dispatch({
+          type: `${prefix} ${FINISH_FLOW_ACTION_TYPE}`,
+          context,
+          id,
+        });
+      });
+
+      if (flowIsRunning$.getValue()[0] === id) {
+        flowIsRunning$.next(flowIsRunning$.getValue().slice(1));
+      }
+
+      finishFlow$.next();
+
+      stopNestedFlows();
+      return;
+    }
+
+    if (tag) {
+      finishParentFlow({
+        tag,
+        context,
+        stopNestedFlows: () => {
+          finishFlow$.next();
+          stopNestedFlows();
+        },
+      });
+    }
+  };
+
   Promise.resolve().then(() => {
-    dispatch({ ...currentAction, context });
+    dispatch({
+      ...currentAction,
+      context,
+      id,
+      buildFlow: ({ context = {} as T, actions, flowTag }: { context?: T; actions: Action[]; flowTag: string }) => {
+        return buildNestedFlow({
+          relatedAction: currentAction,
+          context,
+          actions,
+          actions$,
+          dispatch,
+          prefix,
+          flowTag,
+          buildFlowFn: buildFlow,
+          finishParentFlow: finishFlow,
+        }).pipe(map(({ context }) => context as T));
+      },
+      runRepeatedFlow: ({
+        actions,
+        flowTag,
+        context,
+        times,
+        conditionToRepeat,
+      }: {
+        context?: T;
+        actions: Action[];
+        flowTag: string;
+        times?: number;
+        conditionToRepeat?: ConditionObject;
+      }) => {
+        return buildNestedRepeatedFlow({
+          actions,
+          actions$,
+          dispatch,
+          prefix,
+          relatedAction: currentAction,
+          buildFlowFn: buildFlow,
+          flowTag,
+          context,
+          times,
+          conditionToRepeat,
+          finishParentFlow: finishFlow,
+        });
+      },
+      finishFlow,
+    });
   });
 
   return actions$.pipe(
-    filter((action) => action.type === getSuccessActionForFlow(currentAction.type)),
+    filter((action) => action.type === getEndActionForFlow(currentAction.type)),
+    filter((action) => action.id === id),
     take(1),
     tap(({ context }) => {
       if (actions.length <= 1) {
-        Promise.resolve().then(() => {
-          dispatch({
-            type: `${prefix} ${FINISH_FLOW_ACTION_TYPE}`,
-            context,
-            id,
-          });
-        });
-
-        flowIsRunning$.next(flowIsRunning$.getValue().slice(1));
+        finishFlow({ context });
       }
     }),
     filter(() => actions.length > 1),
@@ -59,8 +311,11 @@ const buildFlow = <T>({
         dispatch,
         context,
         prefix,
+        finishParentFlow,
+        flowTag,
       }),
     ),
+    takeUntil(finishFlow$.pipe(take(1))),
   );
 };
 
@@ -86,16 +341,131 @@ export const createFlowRunner = <T>({
   dispatch: (_: Action) => void;
   prefix?: string;
 }): FlowRunner => {
-  const type = `${prefix} ${START_FLOW_ACTION_TYPE}`;
+  const runFlowActionType = `${prefix} ${START_FLOW_ACTION_TYPE}`;
+  const endFlowActionType = `${prefix} ${FINISH_FLOW_ACTION_TYPE}`;
+  const runConditionalFlow = `${prefix} ${RUN_CONDITION_FLOW}`;
+  const runConditionalFlowEnd = `${prefix} ${RUN_CONDITION_FLOW_END}`;
+  const runRepeatedFlow = `${prefix} ${RUN_REPEATED_FLOW}`;
+  const runRepeatedFlowEnd = `${prefix} ${RUN_REPEATED_FLOW_END}`;
+  const forceFinishFlow = `${prefix} ${FORCE_FINISH_FLOW}`;
+  const forceFinishFlowEnd = `${prefix} ${FORCE_FINISH_FLOW_END}`;
+  const runDynamicAction = `${prefix} ${RUN_DYNAMIC_ACTION}`;
+  const runDynamicActionEnd = `${prefix} ${RUN_DYNAMIC_ACTION_END}`;
 
   actions$
     .pipe(
-      filter((action) => action.type === type),
+      filter((action) => action.type === runFlowActionType),
       tap(({ id }) => {
         flowIsRunning$.next([...flowIsRunning$.getValue(), id]);
       }),
       continueWhenFlowIsNotRunning(),
-      switchMap(({ actions, context, id }) => buildFlow({ id, actions, actions$, dispatch, context, prefix })),
+      switchMap(({ actions, context, id }) =>
+        buildFlow({
+          id,
+          actions,
+          actions$,
+          dispatch,
+          context,
+          prefix,
+          flowTag: '#main',
+        }),
+      ),
+    )
+    .subscribe();
+
+  actions$
+    .pipe(
+      filter((action) => action.type === forceFinishFlow),
+      tap((action) => {
+        action.finishFlow(action.tag);
+
+        dispatch({
+          type: forceFinishFlowEnd,
+          context: action.context,
+          id: action.id,
+        });
+      }),
+    )
+    .subscribe();
+
+  actions$
+    .pipe(
+      filter((action) => action.type === runDynamicAction),
+      tap((action) => {
+        const newContext = eval(action.code || 'action.context');
+
+        dispatch({
+          type: runDynamicActionEnd,
+          context: newContext,
+          id: action.id,
+        });
+      }),
+    )
+    .subscribe();
+
+  actions$
+    .pipe(
+      filter((action) => action.type === runConditionalFlow),
+      switchMap((action) => {
+        const actions = (action.conditions || []).find((obj) =>
+          validateCondition({
+            condition: obj.condition,
+            globalContext: action.context,
+          }),
+        )?.actions;
+
+        if (!actions) {
+          return of(action);
+        }
+
+        return buildNestedFlow<T>({
+          relatedAction: action,
+          actions,
+          actions$,
+          context: action.context,
+          dispatch,
+          flowTag: action.flowTag,
+          prefix,
+          buildFlowFn: buildFlow,
+          finishParentFlow: action.finishFlow,
+        });
+      }),
+      tap(({ context, id }) => {
+        dispatch({
+          type: runConditionalFlowEnd,
+          context,
+          id,
+        });
+      }),
+    )
+    .subscribe();
+
+  actions$
+    .pipe(
+      filter((action) => action.type === runRepeatedFlow),
+      switchMap((action) =>
+        buildNestedRepeatedFlow({
+          actions: action.actions,
+          actions$,
+          dispatch,
+          prefix,
+          relatedAction: action,
+          buildFlowFn: buildFlow,
+          flowTag: action.flowTag,
+          context: action.context,
+          times: action.times,
+          conditionToRepeat: action.conditionToRepeat,
+          finishParentFlow: action.finishFlow,
+        }).pipe(
+          tap((context) => {
+            dispatch({
+              type: runRepeatedFlowEnd,
+              context,
+              id: action.id,
+            });
+          }),
+        ),
+      ),
     )
     .subscribe();
 
@@ -104,7 +474,7 @@ export const createFlowRunner = <T>({
 
     Promise.resolve().then(() => {
       dispatch({
-        type,
+        type: runFlowActionType,
         id: flowId,
         actions,
         context,
@@ -112,7 +482,7 @@ export const createFlowRunner = <T>({
     });
 
     return actions$.pipe(
-      filter((action) => action.type === `${prefix} ${FINISH_FLOW_ACTION_TYPE}`),
+      filter((action) => action.type === endFlowActionType),
       filter(({ id }) => id === flowId),
       take(1),
       map(({ context }) => context as T),

@@ -35,13 +35,13 @@ const actions$ = new Subject<Action>();
 actions$.pipe(
   ofType('ADD'),
   // we can do any synchronous or asynchronous stuff
-  map(({ context, value }) => ({ type: 'ADD Success', context: context + value })), // We should dispatch same action type but with " Success" sufix
+  map(({ context, value, id }) => ({ type: 'ADD End', id, context: context + value })), // We should dispatch same action type but with " End" sufix
 ).subscribe(actions$.next),
 
 actions$.pipe(
   ofType('MULTIPLY'),
   // we can do any synchronous or asynchronous stuff
-  map(({ context, value }) => ({ type: 'MULTIPLY Success', context: context * value })), // We should dispatch same action type but with " Success" sufix
+  map(({ context, value, id }) => ({ type: 'MULTIPLY End', id, context: context * value })), // We should dispatch same action type but with " End" sufix
 ).subscribe(actions$.next),
 
 
